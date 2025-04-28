@@ -1,0 +1,37 @@
+name: sempre_online_app
+description: "Aplicativo Sempre Online"
+publish_to: none
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.7.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI
+  cupertino_icons: ^1.0.8
+  shimmer: ^2.0.0
+  fl_chart: ^0.63.0
+  get: ^4.6.5
+
+  # Utilitários
+  intl: ^0.18.1
+  shared_preferences: ^2.2.2
+  http: ^1.2.1
+  dio: ^5.0.0
+
+  # Recursos da fatura
+  qr_flutter: ^4.1.0      # mesma API do 4.0.0, mas últimos fixes
+  share_plus: ^7.2.1
+  url_launcher: ^6.2.5    # <- nome correto do pacote
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1    # versão mais nova combina melhor com o SDK 3.7
+
+flutter:
+  uses-material-design: true
