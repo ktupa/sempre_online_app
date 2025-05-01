@@ -13,25 +13,34 @@ dependencies:
 
   # UI
   cupertino_icons: ^1.0.8
-  shimmer: ^2.0.0
-  fl_chart: ^0.63.0
+  shimmer: ^3.0.0
+  fl_chart: ^0.71.0
   get: ^4.6.5
+  font_awesome_flutter: ^10.2.0
 
-  # Utilitários
-  intl: ^0.18.1
+  # Utilitários 
+  intl: ^0.20.2
   shared_preferences: ^2.2.2
   http: ^1.2.1
   dio: ^5.0.0
-
-  # Recursos da fatura
-  qr_flutter: ^4.1.0      # mesma API do 4.0.0, mas últimos fixes
-  share_plus: ^7.2.1
-  url_launcher: ^6.2.5    # <- nome correto do pacote
+  image_picker: ^1.1.2  
+  qr_flutter: ^4.1.0
+  share_plus: ^11.0.0
+  url_launcher: ^6.2.5
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.1    # versão mais nova combina melhor com o SDK 3.7
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/logo-nova-semppre.png"
+  remove_alpha_ios: true
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/logo-nova-semppre.png

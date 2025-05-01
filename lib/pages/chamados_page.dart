@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
-import 'package:get/get.dart';
 
 import '../services/ixc_api_service.dart';
 import '../services/auth_service.dart';
-// import 'chamado_detail_page.dart';
+import 'chamado_detail_page.dart';
 import 'ordem_servico_detail_page.dart';
-import '../widgets/NovoChamadoModal.dart'; // Criação novo chamado
-import '../widgets/RespostaChamadoModal.dart'; // Responder chamado
+import 'novo_chamado_modal.dart';
 
 class ChamadosPage extends StatefulWidget {
   const ChamadosPage({Key? key}) : super(key: key);
@@ -20,15 +18,15 @@ class _ChamadosPageState extends State<ChamadosPage>
     with SingleTickerProviderStateMixin {
   late Future<List<Map<String, dynamic>>> _futureChamados;
   late Future<List<Map<String, dynamic>>> _futureOrdens;
-  late TabController _tabController;
-  late String _clienteId;
+  late TabController _tab;
+  late final String _clienteId;
 
   @override
   void initState() {
     super.initState();
-    final user = AuthService().clientData!;
-    _clienteId = user['id'].toString();
-    _tabController = TabController(length: 2, vsync: this);
+    _clienteId = AuthService().clientData!['id'].toString();
+    _tab = TabController(length: 2, vsync: this)
+      ..addListener(() => setState(() {}));
     _loadData();
   }
 
@@ -37,276 +35,171 @@ class _ChamadosPageState extends State<ChamadosPage>
     _futureOrdens = listarOrdensServicoCliente(_clienteId);
   }
 
-  Color _getStatusColor(String status, BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    switch (status) {
-      case 'A':
-        return Colors.blue;
-      case 'E':
-        return Colors.orange;
-      case 'F':
-        return Colors.green;
-      default:
-        return cs.onSurface.withOpacity(0.6);
-    }
+  Color _statusColor(String s) =>
+      {
+        'N': Colors.blue,
+        'P': Colors.orange,
+        'EP': Colors.deepOrange,
+        'S': Colors.green,
+        'C': Colors.grey,
+      }[s] ??
+      Colors.blueGrey;
+
+  IconData _statusIcon(String s) =>
+      {
+        'N': Icons.mark_email_unread_outlined,
+        'P': Icons.hourglass_bottom,
+        'EP': Icons.build_circle_outlined,
+        'S': Icons.check_circle_outline,
+        'C': Icons.cancel_outlined,
+      }[s] ??
+      Icons.help_outline;
+
+  void _openChamado(Map<String, dynamic> c) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ChamadoDetailPage(chamado: c)),
+    );
+    _loadData();
+    setState(() {});
   }
 
-  IconData _getStatusIcon(String status) {
-    switch (status) {
-      case 'A':
-        return Icons.mark_email_unread_outlined;
-      case 'E':
-        return Icons.support_agent;
-      case 'F':
-        return Icons.check_circle_outline;
-      default:
-        return Icons.help_outline;
-    }
-  }
-
-  void _openOrdem(Map<String, dynamic> ordem) {
+  void _openOrdem(Map<String, dynamic> o) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => OrdemServicoDetailPage(ordemServico: ordem),
+        builder: (_) => OrdemServicoDetailPage(ordemServico: o),
       ),
     );
   }
 
-  void _responderChamado(Map<String, dynamic> chamado) {
-    final status = chamado['status']?.toString() ?? '';
-    final idChamado = chamado['id'].toString();
-    final tokenChamado = chamado['token'].toString();
-
-    if (status == 'F') {
-      Get.snackbar(
-        'Chamado Finalizado',
-        'Este chamado já foi fechado e não aceita novas mensagens.',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.redAccent,
-        colorText: Colors.white,
-      );
-      return;
-    }
-
-    showDialog(
-      context: context,
-      builder:
-          (_) => RespostaChamadoModal(
-            idChamado: idChamado,
-            tokenChamado: tokenChamado,
-          ),
-    );
-  }
-
-  void _abrirNovoChamado() {
-    showDialog(
-      context: context,
-      builder: (_) => NovoChamadoModal(clienteId: _clienteId),
-    );
-  }
-
-  Widget _buildChamadosList() {
-    final cs = Theme.of(context).colorScheme;
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _futureChamados,
-      builder: (ctx, snap) {
-        if (snap.connectionState != ConnectionState.done) {
-          return _buildShimmer(ctx);
-        }
-        if (snap.hasError) {
-          return Center(
-            child: Text(
-              'Erro: ${snap.error}',
-              style: TextStyle(color: cs.error),
-            ),
-          );
-        }
-        final chamados = snap.data!;
-        if (chamados.isEmpty) {
-          return const Center(child: Text('Nenhum chamado encontrado.'));
-        }
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: chamados.length,
-          itemBuilder: (ctx, i) {
-            final c = chamados[i];
-            return _buildChamadoCard(c);
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildOrdensList() {
-    final cs = Theme.of(context).colorScheme;
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _futureOrdens,
-      builder: (ctx, snap) {
-        if (snap.connectionState != ConnectionState.done) {
-          return _buildShimmer(ctx);
-        }
-        if (snap.hasError) {
-          return Center(
-            child: Text(
-              'Erro: ${snap.error}',
-              style: TextStyle(color: cs.error),
-            ),
-          );
-        }
-        final ordens = snap.data!;
-        if (ordens.isEmpty) {
-          return const Center(
-            child: Text('Nenhuma ordem de serviço encontrada.'),
-          );
-        }
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: ordens.length,
-          itemBuilder: (ctx, i) {
-            final o = ordens[i];
-            return _buildOrdemCard(o);
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildChamadoCard(Map<String, dynamic> chamado) {
-    final cs = Theme.of(context).colorScheme;
-    final status = chamado['status'] ?? '';
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () => _responderChamado(chamado),
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: cs.shadow.withOpacity(0.1),
-              blurRadius: 6,
-              offset: const Offset(2, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Icon(
-              _getStatusIcon(status),
-              color: _getStatusColor(status, context),
-              size: 32,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    chamado['titulo'] ?? '',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Aberto em: ${chamado['data_criacao'] ?? ''}',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    chamado['menssagem'] ?? '',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOrdemCard(Map<String, dynamic> ordem) {
-    final cs = Theme.of(context).colorScheme;
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () => _openOrdem(ordem),
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: cs.shadow.withOpacity(0.1),
-              blurRadius: 6,
-              offset: const Offset(2, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            const Icon(
-              Icons.build_circle_outlined,
-              color: Colors.blueAccent,
-              size: 32,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Ordem #${ordem['id'] ?? ''}',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Aberto em: ${ordem['data_abertura'] ?? ''}',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildShimmer(BuildContext context) {
+  Widget _shimmer() {
     final cs = Theme.of(context).colorScheme;
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: 4,
-      itemBuilder: (_, __) {
-        return Container(
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          child: Shimmer.fromColors(
-            baseColor: cs.surface,
-            highlightColor: cs.surface.withOpacity(0.7),
-            child: Container(
-              height: 100,
-              decoration: BoxDecoration(
-                color: cs.surface,
-                borderRadius: BorderRadius.circular(16),
+      itemBuilder:
+          (_, __) => Container(
+            margin: const EdgeInsets.symmetric(vertical: 6),
+            child: Shimmer.fromColors(
+              baseColor: cs.surface,
+              highlightColor: cs.surfaceVariant,
+              child: Container(
+                height: 90,
+                decoration: BoxDecoration(
+                  color: cs.surface,
+                  borderRadius: BorderRadius.circular(16),
+                ),
               ),
             ),
           ),
-        );
-      },
+    );
+  }
+
+  Widget _cardChamado(Map<String, dynamic> c) {
+    final cs = Theme.of(context).colorScheme;
+    final status = (c['su_status'] ?? c['status'] ?? 'N').toString();
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => _openChamado(c),
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(.05),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(_statusIcon(status), color: _statusColor(status), size: 30),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    c['titulo'] ?? 'Sem título',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Aberto em: ${c['data_cadastro'] ?? '-'}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    c['menssagem'] ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontStyle: FontStyle.italic,
+                      color: cs.onSurface.withOpacity(0.7),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _cardOrdem(Map<String, dynamic> o) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => _openOrdem(o),
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(.05),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.plumbing_outlined, color: Colors.indigo, size: 30),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Ordem #${o['id'] ?? '---'}',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Aberta em: ${o['data_abertura'] ?? '-'}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right),
+          ],
+        ),
+      ),
     );
   }
 
@@ -314,32 +207,82 @@ class _ChamadosPageState extends State<ChamadosPage>
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: cs.background,
       appBar: AppBar(
         backgroundColor: cs.primary,
-        title: const Text('Suporte', style: TextStyle(color: Colors.white)),
+        title: const Text('Suporte'),
         centerTitle: true,
         bottom: TabBar(
-          controller: _tabController,
+          controller: _tab,
+          labelStyle: const TextStyle(fontWeight: FontWeight.w600),
           tabs: const [
-            Tab(text: 'Meus Atendimentos'),
-            Tab(text: 'Minhas Visitas Técnicas'),
+            Tab(text: 'Atendimentos'),
+            Tab(text: 'Visitas Técnicas'),
           ],
         ),
       ),
       body: TabBarView(
-        controller: _tabController,
-        children: [_buildChamadosList(), _buildOrdensList()],
+        controller: _tab,
+        children: [
+          FutureBuilder<List<Map<String, dynamic>>>(
+            future: _futureChamados,
+            builder: (_, snap) {
+              if (snap.connectionState != ConnectionState.done)
+                return _shimmer();
+              if (snap.hasError)
+                return Center(child: Text('Erro: ${snap.error}'));
+              final lst = snap.data!;
+              if (lst.isEmpty)
+                return const Center(
+                  child: Text('Nenhum atendimento encontrado.'),
+                );
+              return ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: lst.length,
+                itemBuilder: (_, i) => _cardChamado(lst[i]),
+              );
+            },
+          ),
+          FutureBuilder<List<Map<String, dynamic>>>(
+            future: _futureOrdens,
+            builder: (_, snap) {
+              if (snap.connectionState != ConnectionState.done)
+                return _shimmer();
+              if (snap.hasError)
+                return Center(child: Text('Erro: ${snap.error}'));
+              final lst = snap.data!;
+              if (lst.isEmpty)
+                return const Center(
+                  child: Text('Nenhuma visita técnica registrada.'),
+                );
+              return ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: lst.length,
+                itemBuilder: (_, i) => _cardOrdem(lst[i]),
+              );
+            },
+          ),
+        ],
       ),
       floatingActionButton:
-          _tabController.index == 0
+          _tab.index == 0
               ? FloatingActionButton(
                 backgroundColor: cs.primary,
                 foregroundColor: cs.onPrimary,
-                onPressed: _abrirNovoChamado,
+                onPressed: () => _mostrarNovoChamadoModal(context, _clienteId),
                 child: const Icon(Icons.add),
+                tooltip: 'Novo Atendimento',
               )
               : null,
     );
+  }
+
+  void _mostrarNovoChamadoModal(BuildContext context, String clienteId) {
+    showDialog(
+      context: context,
+      builder: (_) => NovoChamadoModal(clienteId: clienteId),
+    ).then((_) {
+      _loadData();
+      setState(() {});
+    });
   }
 }

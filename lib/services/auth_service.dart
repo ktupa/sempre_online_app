@@ -1,8 +1,5 @@
-// lib/services/auth_service.dart
-
 import 'dart:async';
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'ixc_api_service.dart';
@@ -21,14 +18,13 @@ class AuthService {
   /// Indica se o usuário está logado
   bool get isLoggedIn => _isLoggedIn;
 
-  /// Retorna os dados completos do cliente autenticado
+  /// Dados completos do cliente autenticado
   Map<String, dynamic>? get clientData => _clientData;
 
-  /// Retorna o CPF salvo (para pré-preencher o campo)
+  /// CPF salvo (para pré-preencher o campo)
   String? get savedCpf => _savedCpf;
 
-  /// Deve ser chamado antes de runApp()
-  /// Carrega sessão e dados salvos, se existirem e "lembrar" estiver ativo
+  /// Inicializa dados salvos em SharedPreferences
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
     final active = prefs.getBool('session_active') ?? false;
@@ -44,31 +40,31 @@ class AuthService {
     }
   }
 
-  /// Tenta autenticar pelo CPF (ou e-mail, se implementar depois)
-  /// Se [remember]=true, salva CPF e dados em prefs para próximas execuções
-  Future<bool> login(String cpf, {bool remember = false}) async {
-    // 1) Verifica existência do CPF
-    final exists = await autenticarClientePorCpf(cpf);
-    if (!exists) return false;
+  /// Tenta logar com CPF e senha. Retorna true se bem-sucedido.
+  Future<bool> login(String cpf, String senha, {bool remember = false}) async {
+    // Busca dados do cliente
+    final cliente = await buscarClienteConfiavel(cpf);
+    if (cliente == null) return false;
 
-    // 2) Busca dados completos do cliente
-    final data = await buscarClientePorCpf(cpf);
-    if (data == null) return false;
+    // Extrai senha gravada no IXC e compara
+    final senhaReal = (cliente['senha'] ?? '').toString().trim();
+    final cpfLimpo = cpf.replaceAll(RegExp(r'\D'), '');
 
-    // 3) Atualiza estado interno
-    _clientData = data;
+    if (senhaReal != senha) return false;
+
+    // Configura sessão
+    _clientData = cliente;
     _isLoggedIn = true;
-    _savedCpf = cpf;
+    _savedCpf = cpfLimpo;
     _startSessionTimer();
 
-    // 4) Persiste estado em SharedPreferences
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('session_active', true);
 
     if (remember) {
       await prefs.setBool('remember_login', true);
-      await prefs.setString('saved_cpf', cpf);
-      await prefs.setString('client_data', jsonEncode(data));
+      await prefs.setString('saved_cpf', cpfLimpo);
+      await prefs.setString('client_data', jsonEncode(cliente));
     } else {
       await prefs.remove('remember_login');
       await prefs.remove('saved_cpf');
@@ -78,7 +74,7 @@ class AuthService {
     return true;
   }
 
-  /// Encerra a sessão, limpa todos os dados salvos e retorna para a tela de login
+  /// Encerra sessão e limpa todos os dados
   Future<void> logout(BuildContext context) async {
     _isLoggedIn = false;
     _clientData = null;
@@ -91,9 +87,7 @@ class AuthService {
     await prefs.remove('saved_cpf');
     await prefs.remove('client_data');
 
-    Navigator.of(
-      context,
-    ).pushNamedAndRemoveUntil('/', (Route<dynamic> route) => false);
+    Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false);
   }
 
   void _startSessionTimer() {

@@ -1,3 +1,11 @@
+// lib/pages/perfil_page.dart
+//
+// Mesma página anterior, **sem remover nada**, apenas adicionando o
+// mapeamento dos códigos-de-cidade para nomes amigáveis.
+//
+// ⚠️  Se precisar acrescentar mais cidades depois, basta incluir novos
+//      `case` dentro de `_mapCidade`.
+
 import 'package:flutter/material.dart';
 import '../services/ixc_api_service.dart';
 import '../services/auth_service.dart';
@@ -16,6 +24,26 @@ class _PerfilPageState extends State<PerfilPage> {
   late String _cpf;
   late String _clienteId;
 
+  /* ---------- mapeia alguns IDs de cidade ---------- */
+  String _mapCidade(dynamic valor) {
+    final id = valor?.toString() ?? '';
+    switch (id) {
+      case '5412':
+        return 'Goiânia';
+      case '5390':
+        return 'Crixás';
+      case '5438':
+        return 'Itapuranga';
+      case '5527':
+        return 'Santa Terezinha de Goiás';
+      case '5554':
+        return 'Uirapuru';
+      default:
+        return id; // se não encontrar, devolve o valor original
+    }
+  }
+
+  /* ---------- ciclo de vida ---------- */
   @override
   void initState() {
     super.initState();
@@ -58,6 +86,7 @@ class _PerfilPageState extends State<PerfilPage> {
     super.dispose();
   }
 
+  /* ---------- UI ---------- */
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -80,7 +109,7 @@ class _PerfilPageState extends State<PerfilPage> {
           final endereco = p['endereco'] ?? 'Sem Endereço';
           final numero = p['numero'] ?? 'S/N';
           final bairro = p['bairro'] ?? 'Sem Bairro';
-          final cidade = p['cidade'] ?? '';
+          final cidade = _mapCidade(p['cidade']); // <-- mapeamento aqui
           final complemento = p['complemento'] ?? '';
           final cadastro = p['data_cadastro'] ?? '—';
 
@@ -106,11 +135,7 @@ class _PerfilPageState extends State<PerfilPage> {
                       complemento.isNotEmpty ? complemento : '—',
                       Icons.add_location_alt_outlined,
                     ),
-                    _buildInfoTile(
-                      'Cidade (ID)',
-                      cidade.toString(),
-                      Icons.location_on,
-                    ),
+                    _buildInfoTile('Cidade', cidade, Icons.location_on),
                     _buildInfoTile('Data Cadastro', cadastro, Icons.date_range),
                     const SizedBox(height: 24),
                     _buildSectionTitle('Contatos', ts, cs),
@@ -148,9 +173,10 @@ class _PerfilPageState extends State<PerfilPage> {
         child: SafeArea(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center, // ➋
             children: [
               CircleAvatar(
-                radius: 48,
+                radius: 46,
                 backgroundColor: Colors.white.withOpacity(0.3),
                 child: Text(
                   nome.isNotEmpty
@@ -159,17 +185,29 @@ class _PerfilPageState extends State<PerfilPage> {
                   style: const TextStyle(fontSize: 32, color: Colors.white),
                 ),
               ),
-              const SizedBox(height: 12),
-              Text(
-                nome,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
+              const SizedBox(height: 10),
+
+              // ➊ Container para assumir largura máxima
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  nome,
+                  textAlign: TextAlign.center, // ➌
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(email, style: const TextStyle(color: Colors.white70)),
+
+              const SizedBox(height: 2),
+              Text(
+                email,
+                textAlign: TextAlign.center, // também pode centrar o email
+                style: const TextStyle(color: Colors.white70),
+              ),
             ],
           ),
         ),
