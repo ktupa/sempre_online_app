@@ -657,30 +657,20 @@ Future<List<Map<String, dynamic>>> listarOrdensServicoCliente(
     "oper": "=",
     "page": "1",
     "rp": "100",
-    "sortname": "su_oss_chamado.id",
+    "sortname": "su_oss_chamado.data_abertura", // usa a data correta
     "sortorder": "desc",
+    "campos":
+        "id,protocolo,status,data_abertura,data_inicio,data_fechamento", // traz só o necessário
   };
 
   final data = await _post('su_oss_chamado', body);
   final registros = data['registros'];
-  return (registros is List)
-      ? List<Map<String, dynamic>>.from(registros)
-      : <Map<String, dynamic>>[];
-}
 
-/// Responde um chamado existente
-Future<void> responderChamado({
-  required String idChamado,
-  required String tokenChamado,
-  required String mensagem,
-}) async {
-  final payload = {
-    "id_ticket": idChamado,
-    "token": tokenChamado,
-    "mensagem": mensagem,
-    "ixcsoft": "responder",
-  };
-  await _post('su_ticket_resposta', payload);
+  if (registros is List) {
+    return List<Map<String, dynamic>>.from(registros);
+  }
+
+  return [];
 }
 
 Future<List<Map<String, dynamic>>> listarChamadosCliente(
