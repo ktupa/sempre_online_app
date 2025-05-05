@@ -2,8 +2,12 @@
 
 platform :ios, '13.0'
 
-# CocoaPods analytics disables
+# CocoaPods analytics disable
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+# ✅ ESTE BLOCO DEVE FICAR FORA DO TARGET
+install! 'cocoapods',
+  :deterministic_uuids => false
 
 project 'Runner', {
   'Debug' => :debug,
@@ -12,10 +16,6 @@ project 'Runner', {
 }
 
 def flutter_installation
-  # flutter generated script
-  install! 'cocoapods',
-    :deterministic_uuids => false
-
   flutter_root = File.expand_path(File.join(__dir__, '..', 'flutter'))
   load File.join(flutter_root, 'packages', 'flutter_tools', 'bin', 'podhelper.rb')
 end
