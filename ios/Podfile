@@ -1,0 +1,25 @@
+# ios/Podfile
+
+platform :ios, '13.0'
+
+# CocoaPods analytics disables
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_installation
+  # flutter generated script
+  install! 'cocoapods',
+    :deterministic_uuids => false
+
+  flutter_root = File.expand_path(File.join(__dir__, '..', 'flutter'))
+  load File.join(flutter_root, 'packages', 'flutter_tools', 'bin', 'podhelper.rb')
+end
+
+target 'Runner' do
+  flutter_installation
+end
