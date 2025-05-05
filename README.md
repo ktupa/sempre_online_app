@@ -63,7 +63,7 @@ Este projeto está **pronto para uso e personalização**, integrando Firebase e
 
 ### 1. Clonar o projeto
 ```bash
-git clone https://github.com/sua-empresa/sempre_online_app.git
+git clone https://github.com/ktupa/sempre_online_app.git
 cd sempre_online_app
 
 ##Instalar dependências
