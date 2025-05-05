@@ -2,7 +2,7 @@ workflows:
   build_ios_only:
     name: Build iOS Sempre Online
     environment:
-      flutter: stable     # canal estável
+      flutter: stable
       xcode: latest
       cocoapods: default
     scripts:
