@@ -2,18 +2,17 @@ workflows:
   build_ios_only:
     name: Build iOS Sempre Online
     environment:
-      flutter: stable        # versão estável mais recente
+      flutter: stable
       xcode: latest
       cocoapods: default
     scripts:
       - name: Pub get
         script: flutter pub get
 
-      - name: Build iOS release (sem assinatura)
+      - name: Build release (sem assinatura)
         script: flutter build ios --release --no-codesign
 
     artifacts:
-      # Resultado do build — útil para subir no Xcode Organizer ou empacotar .ipa depois
       - build/ios/iphoneos/Runner.app
 
     publishing:
