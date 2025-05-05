@@ -1,15 +1,20 @@
 platform :ios, '13.0'
 
+# desativa analytics do CocoaPods
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 install! 'cocoapods', deterministic_uuids: false
 
-# ← caminho correto para o helper que o Flutter injeta em ios/Flutter/
-load File.join(__dir__, 'Flutter', 'podhelper.rb')
+# ← caminho do SDK Flutter (Codemagic define FLUTTER_ROOT automaticamente)
+flutter_root = ENV['FLUTTER_ROOT']
+raise '❌  FLUTTER_ROOT não definido!' unless flutter_root && !flutter_root.empty?
 
-flutter_ios_podfile_setup   # configura variáveis de build do Flutter
+# carrega o helper oficial
+load File.join(flutter_root, 'packages', 'flutter_tools', 'bin', 'podhelper.rb')
 
 target 'Runner' do
   use_frameworks!
   use_modular_headers!
-  flutter_install_ios_plugin_pods   # instala todos os plugins iOS
+
+  # configurações + instalação de todos os plugins iOS
+  flutter_ios_podfile_setup
 end
