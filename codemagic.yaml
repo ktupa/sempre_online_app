@@ -8,15 +8,28 @@ workflows:
       vars:
         BUILD_NUMBER: 1
     scripts:
-      - name: Instalando dependências
+      - name: Instalando dependências Flutter
         script: |
           flutter pub get
+
+      - name: Corrigir Podfile para evitar erro do flutter_install_all_ios_pods
+        script: |
+          sed -i '' 's/flutter_install_all_ios_pods .*/flutter_install_all_ios_pods()/g' ios/Podfile
+
+      - name: Instalar e limpar Pods
+        script: |
           cd ios
+          rm -rf Pods Podfile.lock
           pod install
-      - name: Build iOS release (sem assinatura)
-        script: flutter build ios --release --no-codesign
+          cd ..
+
+      - name: Build iOS release
+        script: |
+          flutter build ios --release --no-codesign
+
     artifacts:
       - build/ios/iphoneos/Runner.app
+
     publishing:
       email:
         recipients:
