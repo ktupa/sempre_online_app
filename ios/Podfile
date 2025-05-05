@@ -4,7 +4,7 @@ ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 install! 'cocoapods', deterministic_uuids: false
 
 # —> o Codemagic sempre expõe esta variável
-flutter_root = ENV['FLUTTER_ROOT']              
+flutter_root = ENV['FLUTTER_ROOT']
 raise '❌  FLUTTER_ROOT não definido!' unless flutter_root && !flutter_root.empty?
 
 # helper oficial
@@ -17,6 +17,9 @@ target 'Runner' do
   use_frameworks!
   use_modular_headers!
 
-  # ✅ função correta (existe no helper) – precisa do caminho do Podfile
+  # ➜ linha extra: garante que os headers do Flutter.framework sejam encontrados
+  pod 'Flutter', :path => File.join(flutter_root, 'bin', 'cache', 'artifacts', 'engine', 'ios')
+
+  # instala todos os plugins (firebase_core, share_plus, etc.)
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
