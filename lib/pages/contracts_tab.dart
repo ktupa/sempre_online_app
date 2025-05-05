@@ -68,6 +68,35 @@ class ContractsTab extends StatelessWidget {
     /* … mesma implementação … */
   }
 
+  /* ------------ helper de Chip ------------ */
+
+  Widget _tag({
+    required IconData icon,
+    required String label,
+    required Color bg,
+    required Color fg,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: fg),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(fontSize: 11, color: fg),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
   /* ------------ UI ------------ */
 
   @override
@@ -93,24 +122,26 @@ class ContractsTab extends StatelessWidget {
         if (snap.connectionState != ConnectionState.done) {
           return const Center(child: CircularProgressIndicator());
         }
-        if (snap.hasError) return Center(child: Text('Erro: ${snap.error}'));
+        if (snap.hasError) {
+          return Center(child: Text('Erro: ${snap.error}'));
+        }
 
-        final List<Map<String, dynamic>> contratosAll = snap.data![0];
-        final List<Map<String, dynamic>> faturas = snap.data![1];
+        final contratosAll = snap.data![0] as List<Map<String, dynamic>>;
+        final faturas = snap.data![1] as List<Map<String, dynamic>>;
 
         // só contratos ativos
         final contratos =
             contratosAll.where((c) => c['status'] == 'A').toList();
-        if (contratos.isEmpty)
+        if (contratos.isEmpty) {
           return const Center(child: Text('Nenhum contrato ativo.'));
+        }
 
-        // quantidade de faturas abertas por contrato
-        final Map<String, int> fatAbertas = {};
+        // contas abertas por contrato
+        final fatAbertas = <String, int>{};
         for (final f in faturas) {
           if (f['status'] != 'A') continue;
-          final id = f['id_contrato']?.toString();
-          if (id == null) continue;
-          fatAbertas[id] = (fatAbertas[id] ?? 0) + 1;
+          final idc = f['id_contrato']?.toString();
+          if (idc != null) fatAbertas[idc] = (fatAbertas[idc] ?? 0) + 1;
         }
 
         return ListView.separated(
@@ -120,16 +151,13 @@ class ContractsTab extends StatelessWidget {
           itemBuilder: (context, i) {
             final c = contratos[i];
             final id = c['id'].toString();
-            final plano =
-                (c['contrato'] ?? '').toString(); // <-- campo 'contrato'
+            final plano = (c['contrato'] ?? '').toString();
             final enderecoContrato = [
                   c['endereco'],
                   if ((c['numero'] ?? '').toString().isNotEmpty)
                     'Nº ${c['numero']}',
                   c['bairro'],
-                  (c['cidade'] != null && c['cidade'].toString() != '0')
-                      ? c['cidade']
-                      : '',
+                  if ((c['cidade'] ?? '').toString() != '0') c['cidade'],
                 ]
                 .where((e) => e != null && e.toString().trim().isNotEmpty)
                 .join(' - ');
@@ -138,93 +166,83 @@ class ContractsTab extends StatelessWidget {
                     ? enderecoContrato
                     : enderecoCliente;
 
-            final statusContrato = c['status'] ?? '';
-            final statusInternet = c['status_internet'] ?? '';
-
-            final assinaturaDigital = c['assinatura_digital'] ?? '';
-            final urlAssinatura = c['url_assinatura_digital'] ?? '';
-            final dataAtiv = c['data_ativacao'] ?? '—';
-            final dataRenov = c['data_renovacao'] ?? '—';
-            final flagDesc = c['desbloqueio_confianca'] ?? 'N';
-            final ativoDesc = c['desbloqueio_confianca_ativo'] ?? 'N';
-            final int abertas = fatAbertas[id] ?? 0;
+            final statusContrato = mapStatusContrato(c['status'] ?? '');
+            final statusInternet = mapStatusInternet(
+              c['status_internet'] ?? '',
+            );
+            final abertas = fatAbertas[id] ?? 0;
 
             return Card(
-              elevation: 4,
+              elevation: 2,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
               child: ExpansionTile(
                 tilePadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
+                  horizontal: 16,
+                  vertical: 8,
                 ),
                 childrenPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
+                  horizontal: 16,
+                  vertical: 8,
                 ),
-                title: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Contrato #$id',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    if (plano.isNotEmpty) Text(plano),
-                    if (endereco.isNotEmpty)
-                      Text(
-                        endereco,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
+
+                // ** aqui substituímos o title anterior por um Wrap de tags **
+                title: LayoutBuilder(
+                  builder:
+                      (ctx, constraints) => ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: constraints.maxWidth,
+                        ),
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: [
+                            _tag(
+                              icon: Icons.confirmation_number,
+                              label: '#$id',
+                              bg: Colors.grey.shade200,
+                              fg: Colors.grey.shade700,
+                            ),
+                            _tag(
+                              icon: Icons.wifi_tethering_rounded,
+                              label: plano.isNotEmpty ? plano : '—',
+                              bg: Colors.green.shade50,
+                              fg: const Color(0xFF2E7D32),
+                            ),
+                            _tag(
+                              icon: Icons.home_work_outlined,
+                              label: endereco,
+                              bg: Colors.blue.shade50,
+                              fg: Colors.blue.shade800,
+                            ),
+                            if (abertas > 0)
+                              _tag(
+                                icon: Icons.receipt_long,
+                                label: '$abertas em aberto',
+                                bg: Colors.orange.shade100,
+                                fg: Colors.orange.shade800,
+                              ),
+                          ],
                         ),
                       ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        Chip(
-                          label: Text(mapStatusContrato(statusContrato)),
-                          backgroundColor:
-                              statusContrato == 'A'
-                                  ? Colors.green.withOpacity(.2)
-                                  : Colors.red.withOpacity(.2),
-                        ),
-                        Chip(
-                          label: Text(mapStatusInternet(statusInternet)),
-                          backgroundColor:
-                              statusInternet == 'A'
-                                  ? Colors.green.withOpacity(.2)
-                                  : Colors.orange.withOpacity(.2),
-                        ),
-                        if (abertas > 0)
-                          Chip(
-                            label: Text('$abertas em aberto'),
-                            backgroundColor: Colors.grey.shade300,
-                          ),
-                      ],
-                    ),
-                  ],
                 ),
 
-                /* ---------------- Children (conteúdo expandido) ---------------- */
+                // ** mantemos os children exatamente como antes **
                 children: [
-                  if (statusInternet != 'A') ...[
-                    _buildAvisoBloqueio(context, statusInternet),
+                  if (c['status_internet'] != 'A') ...[
+                    _buildAvisoBloqueio(context, c['status_internet'] ?? ''),
                     const SizedBox(height: 16),
                   ],
-
-                  Text('Ativado em: $dataAtiv'),
-                  Text('Renovação: $dataRenov'),
+                  Text('Ativado em: ${c['data_ativacao'] ?? '—'}'),
+                  Text('Renovação:   ${c['data_renovacao'] ?? '—'}'),
                   const Divider(height: 20),
 
-                  /* consumo */
                   FutureBuilder<Map<String, double>>(
                     future: buscarConsumoRealPorContrato(id),
                     builder: (_, s) {
-                      if (s.connectionState != ConnectionState.done) {
+                      if (s.connectionState != ConnectionState.done)
                         return const Center(child: CircularProgressIndicator());
-                      }
                       if (s.hasError) return Text('Erro consumo: ${s.error}');
                       final d = s.data ?? {};
                       return Column(
@@ -234,7 +252,7 @@ class ContractsTab extends StatelessWidget {
                             'Download: ${_formatBytes((d['download'] ?? 0) * 1024 * 1024 * 1024)}',
                           ),
                           Text(
-                            'Upload  : ${_formatBytes((d['upload'] ?? 0) * 1024 * 1024 * 1024)}',
+                            'Upload:    ${_formatBytes((d['upload'] ?? 0) * 1024 * 1024 * 1024)}',
                           ),
                           const Divider(height: 20),
                         ],
@@ -242,13 +260,11 @@ class ContractsTab extends StatelessWidget {
                     },
                   ),
 
-                  /* logins */
                   FutureBuilder<List<Map<String, dynamic>>>(
                     future: listarRadUsuariosPorContrato(id),
                     builder: (_, s) {
-                      if (s.connectionState != ConnectionState.done) {
+                      if (s.connectionState != ConnectionState.done)
                         return const Center(child: CircularProgressIndicator());
-                      }
                       if (s.hasError) return Text('Erro logins: ${s.error}');
                       final logins = s.data ?? [];
                       return Column(
@@ -263,7 +279,7 @@ class ContractsTab extends StatelessWidget {
                                 ),
                                 title: Text(l['login'] ?? '—'),
                                 subtitle: Text(
-                                  'IP: ${l['ip'] ?? '—'}   ·   MAC: ${l['mac'] ?? '—'}\n'
+                                  'IP: ${l['ip'] ?? '—'}  ·  MAC: ${l['mac'] ?? '—'}\n'
                                   'Tempo: ${formatDuration(l['tempo_conectado'] ?? '0')}',
                                 ),
                               );
@@ -271,9 +287,9 @@ class ContractsTab extends StatelessWidget {
                       );
                     },
                   ),
+
                   const Divider(height: 20),
 
-                  /* extras */
                   Text(
                     'Serviços Extras',
                     style: Theme.of(context).textTheme.titleMedium,
@@ -281,9 +297,8 @@ class ContractsTab extends StatelessWidget {
                   FutureBuilder<List<Map<String, dynamic>>>(
                     future: listarServicosExtrasPorContrato(id),
                     builder: (_, s) {
-                      if (s.connectionState != ConnectionState.done) {
+                      if (s.connectionState != ConnectionState.done)
                         return const Center(child: CircularProgressIndicator());
-                      }
                       if (s.hasError) return Text('Erro extras: ${s.error}');
                       final extras = s.data ?? [];
                       return Column(
@@ -305,22 +320,29 @@ class ContractsTab extends StatelessWidget {
                       );
                     },
                   ),
+
                   const SizedBox(height: 16),
 
-                  /* ações */
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      if (flagDesc == 'P' && ativoDesc == 'N')
+                      if (c['desbloqueio_confianca'] == 'P' &&
+                          c['desbloqueio_confianca_ativo'] == 'N')
                         OutlinedButton.icon(
                           onPressed: () => _desbloquear(context, id),
                           icon: const Icon(Icons.lock_open),
                           label: const Text('Liberar Confiança'),
                         ),
-                      if (assinaturaDigital == 'P' && urlAssinatura.isNotEmpty)
+                      if (c['assinatura_digital'] == 'P' &&
+                          (c['url_assinatura_digital'] as String?)
+                                  ?.isNotEmpty ==
+                              true)
                         ElevatedButton.icon(
                           onPressed:
-                              () => _assinarContrato(context, urlAssinatura),
+                              () => _assinarContrato(
+                                context,
+                                c['url_assinatura_digital'],
+                              ),
                           icon: const Icon(Icons.edit_document),
                           label: const Text('Assinar Contrato'),
                         ),

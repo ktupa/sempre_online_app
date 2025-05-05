@@ -1,10 +1,10 @@
+// lib/pages/chamados_page.dart
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 
 import '../services/ixc_api_service.dart';
 import '../services/auth_service.dart';
 import 'chamado_detail_page.dart';
-import 'ordem_servico_detail_page.dart';
 import 'novo_chamado_modal.dart';
 
 class ChamadosPage extends StatefulWidget {
@@ -21,6 +21,8 @@ class _ChamadosPageState extends State<ChamadosPage>
   late TabController _tab;
   late final String _clienteId;
 
+  String _filtroStatus = 'Abertos';
+
   @override
   void initState() {
     super.initState();
@@ -31,7 +33,13 @@ class _ChamadosPageState extends State<ChamadosPage>
   }
 
   void _loadData() {
-    _futureChamados = listarChamadosCliente(_clienteId);
+    List<String>? status;
+    if (_filtroStatus == 'Abertos') {
+      status = ['N', 'P', 'EP'];
+    } else if (_filtroStatus == 'Fechados') {
+      status = ['S', 'C'];
+    }
+    _futureChamados = listarChamadosCliente(_clienteId, statusFiltrar: status);
     _futureOrdens = listarOrdensServicoCliente(_clienteId);
   }
 
@@ -64,15 +72,6 @@ class _ChamadosPageState extends State<ChamadosPage>
     setState(() {});
   }
 
-  void _openOrdem(Map<String, dynamic> o) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => OrdemServicoDetailPage(ordemServico: o),
-      ),
-    );
-  }
-
   Widget _shimmer() {
     final cs = Theme.of(context).colorScheme;
     return ListView.builder(
@@ -98,7 +97,14 @@ class _ChamadosPageState extends State<ChamadosPage>
 
   Widget _cardChamado(Map<String, dynamic> c) {
     final cs = Theme.of(context).colorScheme;
-    final status = (c['su_status'] ?? c['status'] ?? 'N').toString();
+    final status =
+        (c['su_status'] ?? c['status'] ?? 'N').toString().trim().toUpperCase();
+    final titulo = c['titulo']?.toString() ?? 'Sem título';
+    final dataCriacao =
+        (c['data_criacao'] ?? c['data_cadastro'] ?? '-').toString();
+    final mensagem = (c['menssagem'] ?? c['mensagem'] ?? '').toString();
+    final naoAssumido = (c['id_usuarios'] ?? '0').toString() == '0';
+
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: () => _openChamado(c),
@@ -108,6 +114,7 @@ class _ChamadosPageState extends State<ChamadosPage>
         decoration: BoxDecoration(
           color: cs.surface,
           borderRadius: BorderRadius.circular(16),
+          border: naoAssumido ? Border.all(color: Colors.grey) : null,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(.05),
@@ -118,26 +125,41 @@ class _ChamadosPageState extends State<ChamadosPage>
         ),
         child: Row(
           children: [
-            Icon(_statusIcon(status), color: _statusColor(status), size: 30),
+            Stack(
+              alignment: Alignment.topRight,
+              children: [
+                Icon(
+                  _statusIcon(status),
+                  color: _statusColor(status),
+                  size: 30,
+                ),
+                if (naoAssumido)
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    size: 14,
+                    color: Colors.orange,
+                  ),
+              ],
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    c['titulo'] ?? 'Sem título',
+                    titulo,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Aberto em: ${c['data_cadastro'] ?? '-'}',
+                    'Aberto em: $dataCriacao',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    c['menssagem'] ?? '',
+                    mensagem,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -155,50 +177,37 @@ class _ChamadosPageState extends State<ChamadosPage>
     );
   }
 
+  // ** AQUI: removemos toda a lógica de detalhes e navegação **
   Widget _cardOrdem(Map<String, dynamic> o) {
     final cs = Theme.of(context).colorScheme;
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () => _openOrdem(o),
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(.05),
-              blurRadius: 6,
-              offset: const Offset(0, 3),
+    final id = o['id']?.toString() ?? '---';
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(.05),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.plumbing_outlined, color: Colors.indigo, size: 30),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Ordem #$id',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
-          ],
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.plumbing_outlined, color: Colors.indigo, size: 30),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Ordem #${o['id'] ?? '---'}',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Aberta em: ${o['data_abertura'] ?? '-'}',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -223,39 +232,79 @@ class _ChamadosPageState extends State<ChamadosPage>
       body: TabBarView(
         controller: _tab,
         children: [
-          FutureBuilder<List<Map<String, dynamic>>>(
-            future: _futureChamados,
-            builder: (_, snap) {
-              if (snap.connectionState != ConnectionState.done)
-                return _shimmer();
-              if (snap.hasError)
-                return Center(child: Text('Erro: ${snap.error}'));
-              final lst = snap.data!;
-              if (lst.isEmpty)
-                return const Center(
-                  child: Text('Nenhum atendimento encontrado.'),
-                );
-              return ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: lst.length,
-                itemBuilder: (_, i) => _cardChamado(lst[i]),
-              );
-            },
+          // ─────────── Aba "Atendimentos" ───────────
+          Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: DropdownButtonFormField<String>(
+                  value: _filtroStatus,
+                  decoration: const InputDecoration(
+                    labelText: 'Filtrar status',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'Abertos', child: Text('Abertos')),
+                    DropdownMenuItem(
+                      value: 'Fechados',
+                      child: Text('Fechados'),
+                    ),
+                    DropdownMenuItem(value: 'Todos', child: Text('Todos')),
+                  ],
+                  onChanged: (val) {
+                    setState(() {
+                      _filtroStatus = val!;
+                      _loadData();
+                    });
+                  },
+                ),
+              ),
+              Expanded(
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _futureChamados,
+                  builder: (_, snap) {
+                    if (snap.connectionState != ConnectionState.done) {
+                      return _shimmer();
+                    }
+                    if (snap.hasError) {
+                      return Center(child: Text('Erro: ${snap.error}'));
+                    }
+                    final lst = snap.data!;
+                    if (lst.isEmpty) {
+                      return const Center(
+                        child: Text('Nenhum atendimento encontrado.'),
+                      );
+                    }
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: lst.length,
+                      itemBuilder: (_, i) => _cardChamado(lst[i]),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
+
+          // ─────────── Aba "Visitas Técnicas" ───────────
           FutureBuilder<List<Map<String, dynamic>>>(
             future: _futureOrdens,
             builder: (_, snap) {
-              if (snap.connectionState != ConnectionState.done)
+              if (snap.connectionState != ConnectionState.done) {
                 return _shimmer();
-              if (snap.hasError)
+              }
+              if (snap.hasError) {
                 return Center(child: Text('Erro: ${snap.error}'));
+              }
               final lst = snap.data!;
-              if (lst.isEmpty)
+              if (lst.isEmpty) {
                 return const Center(
                   child: Text('Nenhuma visita técnica registrada.'),
                 );
+              }
               return ListView.builder(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(8),
                 itemCount: lst.length,
                 itemBuilder: (_, i) => _cardOrdem(lst[i]),
               );

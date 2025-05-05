@@ -1,3 +1,4 @@
+// lib/pages/cadastro_senha_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -31,28 +32,47 @@ class _CadastroSenhaPageState extends State<CadastroSenhaPage> {
     super.dispose();
   }
 
+  /* ---------- helpers de data ---------- */
+
+  /// dd/mm/aaaa → aaaa-mm-dd  (comparação)
+  String _brToIso(String br) {
+    final p = br.split('/');
+    if (p.length != 3) return '';
+    return '${p[2]}-${p[1].padLeft(2, '0')}-${p[0].padLeft(2, '0')}';
+  }
+
+  /// dd/mm/aaaa → dd-mm-aaaa (envio PUT)
+  String _brToPut(String br) {
+    final p = br.split('/');
+    if (p.length != 3) return '';
+    return '${p[0].padLeft(2, '0')}-${p[1].padLeft(2, '0')}-${p[2]}';
+  }
+
+  /* ---------- ação principal ---------- */
+
   Future<void> _salvarSenha() async {
     final dataInput = _dataCtrl.text.trim();
     final senha = _senhaCtrl.text.trim();
     final confirma = _confirmaCtrl.text.trim();
 
+    /* validações rápidas */
     if (dataInput.length != 10 || !dataInput.contains('/')) {
       setState(() => _erro = 'Data de nascimento inválida.');
       return;
     }
-
     if (senha.length < 4 || senha != confirma) {
-      setState(() {
-        _erro =
-            senha != confirma
-                ? 'As senhas não coincidem.'
-                : 'A senha deve ter ao menos 4 caracteres.';
-      });
+      setState(
+        () =>
+            _erro =
+                senha != confirma
+                    ? 'As senhas não coincidem.'
+                    : 'A senha deve ter ao menos 4 caracteres.',
+      );
       return;
     }
 
-    final partes = dataInput.split('/');
-    final nascimento = '${partes[2]}-${partes[1]}-${partes[0]}';
+    final dataIso = _brToIso(dataInput); // para comparar
+    final dataPut = _brToPut(dataInput); // para atualizar
 
     setState(() {
       _erro = null;
@@ -60,16 +80,18 @@ class _CadastroSenhaPageState extends State<CadastroSenhaPage> {
     });
 
     try {
+      /* 1. comparar com a base */
       final cliente = widget.cliente;
-      final dataServidor = cliente['data_nascimento']?.toString() ?? '';
-      if (!dataServidor.startsWith(nascimento)) {
+      final dataServidor = (cliente['data_nascimento'] ?? '').toString();
+
+      if (!dataServidor.startsWith(dataIso)) {
         await showDialog(
           context: context,
           builder:
               (_) => AlertDialog(
                 title: const Text('Validação falhou'),
                 content: const Text(
-                  'A data de nascimento não confere com a base de dados.\n\n'
+                  'A data de nascimento não confere com a base de dados.\n'
                   'Entre em contato com nosso atendimento:',
                 ),
                 actions: [
@@ -97,8 +119,12 @@ class _CadastroSenhaPageState extends State<CadastroSenhaPage> {
         return;
       }
 
+      /* 2. dispara atualização */
       final id = cliente['id'].toString();
       final cpfLimpo = widget.cpf.replaceAll(RegExp(r'\D'), '');
+
+      // garante formato aceito no PUT
+      cliente['data_nascimento'] = dataPut;
 
       await atualizarSenhaComTodosCampos(
         idCliente: id,
@@ -116,11 +142,13 @@ class _CadastroSenhaPageState extends State<CadastroSenhaPage> {
         MaterialPageRoute(builder: (_) => LoginPage(savedCpf: cpfLimpo)),
       );
     } catch (e) {
-      setState(() => _erro = 'Erro ao salvar senha: ${e.toString()}');
+      setState(() => _erro = 'Erro ao salvar senha: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
+
+  /* ---------- UI ---------- */
 
   @override
   Widget build(BuildContext context) {
@@ -137,6 +165,8 @@ class _CadastroSenhaPageState extends State<CadastroSenhaPage> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
+
+            /* --- data --- */
             TextField(
               controller: _dataCtrl,
               decoration: const InputDecoration(
@@ -153,9 +183,8 @@ class _CadastroSenhaPageState extends State<CadastroSenhaPage> {
                   final buf = StringBuffer();
                   for (var i = 0; i < digits.length; i++) {
                     buf.write(digits[i]);
-                    if ((i == 1 || i == 3) && i < digits.length - 1) {
+                    if ((i == 1 || i == 3) && i < digits.length - 1)
                       buf.write('/');
-                    }
                   }
                   return TextEditingValue(
                     text: buf.toString(),
@@ -165,6 +194,8 @@ class _CadastroSenhaPageState extends State<CadastroSenhaPage> {
               ],
             ),
             const SizedBox(height: 16),
+
+            /* --- senha --- */
             TextField(
               controller: _senhaCtrl,
               obscureText: true,
@@ -175,6 +206,8 @@ class _CadastroSenhaPageState extends State<CadastroSenhaPage> {
               ),
             ),
             const SizedBox(height: 16),
+
+            /* --- confirmar --- */
             TextField(
               controller: _confirmaCtrl,
               obscureText: true,
@@ -185,9 +218,12 @@ class _CadastroSenhaPageState extends State<CadastroSenhaPage> {
               ),
             ),
             const SizedBox(height: 20),
+
             if (_erro != null)
               Text(_erro!, style: const TextStyle(color: Colors.red)),
             const SizedBox(height: 16),
+
+            /* --- botão salvar --- */
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -210,8 +246,10 @@ class _CadastroSenhaPageState extends State<CadastroSenhaPage> {
               ),
             ),
             const SizedBox(height: 16),
+
             Text(
-              "Seu login será o CPF: ${widget.cpf.replaceAll(RegExp(r'\\D'), '')}",
+              'Seu login será o CPF: '
+              '${widget.cpf.replaceAll(RegExp(r"\\D"), "")}',
               style: theme.textTheme.bodySmall,
               textAlign: TextAlign.center,
             ),

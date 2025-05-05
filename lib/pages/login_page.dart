@@ -148,7 +148,7 @@ class _LoginPageState extends State<LoginPage> {
           const DecoratedBox(
             decoration: BoxDecoration(
               image: DecorationImage(
-                image: NetworkImage('https://imgur.com/a/OvGgqCr.jpeg'),
+                image: NetworkImage('https://i.imgur.com/tnHuvUQ.png'),
                 fit: BoxFit.cover,
               ),
             ),

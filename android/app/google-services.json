@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "626864649467",
+    "project_id": "sempre-online-notificacoes",
+    "storage_bucket": "sempre-online-notificacoes.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:626864649467:android:500773bb58618ebc5c6c5e",
+        "android_client_info": {
+          "package_name": "com.example.sempre_online_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC2cwjHU-iPjLPLbdtaJZOtVHv0mLZWUbA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

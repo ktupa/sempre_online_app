@@ -82,15 +82,22 @@ class _HomeControllerState extends State<HomeController> {
     _syncAlerts();
   }
 
-  Future<int> _countFaturasVencidas() async {
+  Future<int> _countFaturasVencidas(String? contratoId) async {
+    if (contratoId == null || contratoId.trim().isEmpty) {
+      // Nenhum contrato selecionado → retorna 0 faturas
+      return 0;
+    }
+
     final all = await listarFaturasDoCliente(_clienteId);
     final today = DateTime.now();
-
     int total = 0;
+
     for (final f in all) {
-      if ((f['status'] ?? '').toString().toUpperCase() == 'B') continue;
-      if (_contratoRef != null && f['id_contrato']?.toString() != _contratoRef)
-        continue;
+      final status = (f['status'] ?? '').toString().toUpperCase();
+      if (status == 'B') continue; // Ignora faturas pagas
+
+      final idFaturaContrato = f['id_contrato']?.toString().trim();
+      if (idFaturaContrato != contratoId.trim()) continue;
 
       final venc = f['data_vencimento'] ?? '';
       try {
@@ -98,6 +105,7 @@ class _HomeControllerState extends State<HomeController> {
         if (dt.isBefore(today)) total++;
       } catch (_) {}
     }
+
     return total;
   }
 
@@ -109,13 +117,14 @@ class _HomeControllerState extends State<HomeController> {
   }
 
   Future<void> _syncAlerts() async {
-    _contratoRef = await _Prefs.getContrato();
-    final fats = await _countFaturasVencidas();
+    final contratoRef = await _Prefs.getContrato(); // PUXA antes
+    final fats = await _countFaturasVencidas(contratoRef); // PASSA pra função
     final tickets = await _countChamadosAbertos();
     final notifLida = await _Prefs.isNotifLida();
 
     if (mounted) {
       setState(() {
+        _contratoRef = contratoRef;
         _badgeFaturas = fats;
         _badgeChamados = tickets;
         _notificacaoNaoLida = !notifLida;

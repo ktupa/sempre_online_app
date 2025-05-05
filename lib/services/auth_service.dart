@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'ixc_api_service.dart';
 
 class AuthService {
@@ -15,16 +17,10 @@ class AuthService {
   Map<String, dynamic>? _clientData;
   String? _savedCpf;
 
-  /// Indica se o usuário está logado
   bool get isLoggedIn => _isLoggedIn;
-
-  /// Dados completos do cliente autenticado
   Map<String, dynamic>? get clientData => _clientData;
-
-  /// CPF salvo (para pré-preencher o campo)
   String? get savedCpf => _savedCpf;
 
-  /// Inicializa dados salvos em SharedPreferences
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
     final active = prefs.getBool('session_active') ?? false;
@@ -40,19 +36,15 @@ class AuthService {
     }
   }
 
-  /// Tenta logar com CPF e senha. Retorna true se bem-sucedido.
   Future<bool> login(String cpf, String senha, {bool remember = false}) async {
-    // Busca dados do cliente
     final cliente = await buscarClienteConfiavel(cpf);
     if (cliente == null) return false;
 
-    // Extrai senha gravada no IXC e compara
     final senhaReal = (cliente['senha'] ?? '').toString().trim();
     final cpfLimpo = cpf.replaceAll(RegExp(r'\D'), '');
 
     if (senhaReal != senha) return false;
 
-    // Configura sessão
     _clientData = cliente;
     _isLoggedIn = true;
     _savedCpf = cpfLimpo;
@@ -71,10 +63,17 @@ class AuthService {
       await prefs.remove('client_data');
     }
 
+    // 🔔 Envia token FCM
+    final fcmToken = await FirebaseMessaging.instance.getToken();
+    final idCliente = cliente['id']?.toString() ?? '';
+
+    if (fcmToken != null && idCliente.isNotEmpty) {
+      await _enviarTokenParaBackend(fcmToken, idCliente);
+    }
+
     return true;
   }
 
-  /// Encerra sessão e limpa todos os dados
   Future<void> logout(BuildContext context) async {
     _isLoggedIn = false;
     _clientData = null;
@@ -95,5 +94,20 @@ class AuthService {
     _sessionTimer = Timer(const Duration(minutes: 30), () {
       _isLoggedIn = false;
     });
+  }
+
+  Future<void> _enviarTokenParaBackend(String token, String idCliente) async {
+    final url = Uri.parse('http://138.117.249.70:8087/fcm/token');
+    final res = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'token': token, 'id_cliente': idCliente}),
+    );
+
+    if (res.statusCode == 200) {
+      debugPrint('✅ Token FCM enviado com sucesso.');
+    } else {
+      debugPrint('❌ Erro ao enviar token FCM: ${res.statusCode} → ${res.body}');
+    }
   }
 }

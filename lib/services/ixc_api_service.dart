@@ -67,13 +67,21 @@ Future<void> atualizarSenhaComTodosCampos({
     throw Exception('Cliente não encontrado para o ID $idCliente');
   }
 
-  // 2. Atualizar os campos desejados
+  // 2. Ajustar apenas a data de nascimento para dd-mm-aaaa
+  String _isoToPut(String iso) {
+    final partes = iso.split('-');
+    return (partes.length == 3) ? '${partes[2]}-${partes[1]}-${partes[0]}' : '';
+  }
+
+  cliente['data_nascimento'] = _isoToPut(cliente['data_nascimento'] ?? '');
+
+  // 3. Atualizar os campos desejados
   cliente['senha'] = novaSenha;
   cliente['hotsite_email'] = novoLogin;
   cliente['acesso_automatico_central'] = 'S';
   cliente['alterar_senha_primeiro_acesso'] = 'N';
 
-  // 3. Enviar PUT com tudo preenchido
+  // 4. Enviar PUT com tudo preenchido
   final base = kIsWeb ? _ixcProxy : _ixcBase;
   final url = Uri.parse('$base/cliente/$idCliente');
   final res = await http.put(
@@ -438,11 +446,15 @@ Future<List<Map<String, dynamic>>> listarServicosAdicionaisPorContrato(
 /// ----------------- LISTAR FATURAS DO CLIENTE ----------------------------
 /// Busca faturas do cliente no IXC (endpoint fn_areceber)
 Future<List<Map<String, dynamic>>> listarFaturasDoCliente(
-  String clienteId,
-) async {
+  String clienteId, {
+  String? idContrato,
+}) async {
   final body = {
-    "qtype": "fn_areceber.id_cliente",
-    "query": clienteId,
+    "qtype":
+        idContrato != null
+            ? "fn_areceber.id_contrato"
+            : "fn_areceber.id_cliente",
+    "query": idContrato ?? clienteId,
     "oper": "=",
     "page": "1",
     "rp": "1000",
@@ -452,12 +464,7 @@ Future<List<Map<String, dynamic>>> listarFaturasDoCliente(
 
   final data = await _post('fn_areceber', body);
   final registros = data['registros'];
-
-  if (registros is List) {
-    return List<Map<String, dynamic>>.from(registros);
-  }
-
-  return [];
+  return registros is List ? List<Map<String, dynamic>>.from(registros) : [];
 }
 
 /// ----------------- OBTER INFORMAÇÕES DE PIX ----------------------------
@@ -677,14 +684,15 @@ Future<void> responderChamado({
 }
 
 Future<List<Map<String, dynamic>>> listarChamadosCliente(
-  String idCliente,
-) async {
+  String idCliente, {
+  List<String>? statusFiltrar, // Ex: ['N', 'P', 'EP']
+}) async {
   final body = {
     "qtype": "su_ticket.id_cliente",
     "query": idCliente,
     "oper": "=",
     "page": "1",
-    "rp": "100",
+    "rp": "1000",
     "sortname": "su_ticket.id",
     "sortorder": "desc",
   };
@@ -692,13 +700,55 @@ Future<List<Map<String, dynamic>>> listarChamadosCliente(
   final data = await _post('su_ticket', body);
   final registros = data['registros'];
 
-  if (registros is List) {
-    return List<Map<String, dynamic>>.from(registros);
-  } else if (registros is Map) {
-    return registros.values.map((e) => Map<String, dynamic>.from(e)).toList();
+  // Garante que os dados estão em formato de lista
+  final List<Map<String, dynamic>> lista = switch (registros) {
+    List() => List<Map<String, dynamic>>.from(registros),
+    Map() => registros.values.map((e) => Map<String, dynamic>.from(e)).toList(),
+    _ => [],
+  };
+
+  // Aplica filtro local pelos status, se fornecido
+  if (statusFiltrar != null && statusFiltrar.isNotEmpty) {
+    return lista.where((e) {
+      final rawStatus =
+          (e['su_status'] ?? e['status'] ?? '').toString().trim().toUpperCase();
+      return statusFiltrar.contains(rawStatus);
+    }).toList();
   }
 
-  return [];
+  return lista;
+}
+
+/// ----------------- DESCONECTAR CLIENTE VIA API ----------------------------
+/// Envia comando de desconexão para o ID do login (radusuario)
+Future<void> desconectarCliente(String idRadusuario) async {
+  final url = Uri.parse(
+    '${kIsWeb ? _ixcProxy : _ixcBase}/desconectar_clientes',
+  );
+  final body = {"id": idRadusuario, "action": "botaoAjax_15610"};
+
+  final res = await http.post(
+    url,
+    headers: _execHeaders(),
+    body: jsonEncode(body),
+  );
+
+  if (res.statusCode != 200) {
+    throw Exception('Erro HTTP ${res.statusCode}: ${res.body}');
+  }
+
+  final data = jsonDecode(res.body);
+
+  final msgList = data['msg'] as List?;
+  final tipo = msgList?.first['type']?.toString().toLowerCase() ?? '';
+  final mensagem =
+      msgList?.first['message']?.toString().trim() ?? 'Desconhecido';
+
+  if (tipo == 'success') {
+    return; // ✅ comando de desconexão OK
+  }
+
+  throw Exception('Falha na desconexão: $mensagem');
 }
 
 Future<void> enviarMensagemChamado({
@@ -1093,4 +1143,30 @@ Future<void> encerrarChamado({
     mensagem: mensagemFinal,
     finalizaProcesso: 'S',
   );
+}
+
+/// Lista os produtos contratados vinculados a um contrato (TV, Internet, Combo etc)
+Future<List<Map<String, dynamic>>> listarProdutosContrato(
+  String idContrato,
+) async {
+  final body = {
+    "qtype": "view_vd_contratos_produtos_gen.id_contrato",
+    "query": idContrato,
+    "oper": "=",
+    "page": "1",
+    "rp": "100",
+    "sortname": "view_vd_contratos_produtos_gen.id_contrato",
+    "sortorder": "desc",
+  };
+
+  final data = await _post('view_vd_contratos_produtos_gen', body);
+  final rows = data['rows'] as List? ?? [];
+
+  return rows.map<Map<String, dynamic>>((r) {
+    final cell = r['cell'] as List?;
+    return {
+      'id': r['id'] ?? '',
+      'nome': cell != null && cell.length > 1 ? cell[1] ?? '' : '',
+    };
+  }).toList();
 }

@@ -1,41 +1,30 @@
 // lib/pages/dashboard_page.dart
 //
-// Dashboard: mostra apenas o contrato escolhido. O seletor exibe
-//   – ID (#)  cinza
-//   – Plano   verde
-//   – Endereço azul
-// e a fatura/consumo são filtrados pelo contrato selecionado.
+// Dashboard com seletor de contrato, tiles responsivos
+// e teste de velocidade minimalista + tratamento de erros.
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:sempre_online_app/services/auth_service.dart';
 import 'package:sempre_online_app/services/ixc_api_service.dart';
+import 'package:sempre_online_app/services/speed_test_service.dart';
 import 'package:sempre_online_app/widgets/ConsumoCard.dart';
 
-/* ============================================================= */
-/*  Shared-prefs helper – guarda o id do contrato selecionado      */
-/* ============================================================= */
+/// ------------------ prefs helper ------------------
 class _Prefs {
   static const _k = 'contrato_pref';
+  static Future<void> set(String id) async =>
+      (await SharedPreferences.getInstance()).setString(_k, id);
 
-  static Future<void> set(String id) async {
-    final sp = await SharedPreferences.getInstance();
-    await sp.setString(_k, id);
-  }
-
-  static Future<String?> get() async {
-    final sp = await SharedPreferences.getInstance();
-    return sp.getString(_k);
-  }
+  static Future<String?> get() async =>
+      (await SharedPreferences.getInstance()).getString(_k);
 }
 
-/* ============================================================= */
-/*                        DASHBOARD PAGE                          */
-/* ============================================================= */
+/// ------------------ page ------------------
 class DashboardPage extends StatefulWidget {
   final void Function(int) onNavigateTab;
-
   const DashboardPage({super.key, required this.onNavigateTab});
 
   @override
@@ -45,7 +34,9 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   late Future<DashboardInfo> _future;
   late final Map<String, dynamic> _user;
-  String? _selectedId; // id do contrato atualmente em uso
+  String? _selectedId;
+
+  final SpeedTestService _speedTest = SpeedTestService();
 
   @override
   void initState() {
@@ -54,7 +45,7 @@ class _DashboardPageState extends State<DashboardPage> {
     _loadAll();
   }
 
-  /* -------------------- carga principal -------------------- */
+  /* --------------- data --------------- */
   void _loadAll() async {
     _selectedId = await _Prefs.get();
     setState(() {
@@ -72,7 +63,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final contratos = await listarContratosDoCliente(clientId);
     if (contratos.isEmpty) throw Exception('Nenhum contrato encontrado.');
 
-    // — contrato escolhido
+    // contrato ativo
     Map<String, dynamic> contrato;
     if (selectedContrato != null) {
       contrato = contratos.firstWhere(
@@ -85,26 +76,18 @@ class _DashboardPageState extends State<DashboardPage> {
     }
     final contratoId = contrato['id'].toString();
 
-    // — dados complementares
     final rad =
         (await listarRadUsuariosPorContrato(contratoId)).firstOrNull ?? {};
     final consumo = await buscarConsumoRealPorContrato(contratoId);
     final tvPerfis = await listarPerfisTvContrato(contratoId);
 
-    // — faturas só DESSE contrato
     final faturas = await listarFaturasDoCliente(clientId);
-    final doContrato =
-        faturas
-            .where(
-              (f) =>
-                  f['id_contrato']?.toString() == contratoId &&
-                  f['status'] == 'A',
-            )
-            .toList()
-          ..sort(
-            (a, b) => a['data_vencimento'].compareTo(b['data_vencimento']),
-          );
-    final faturaAtual = doContrato.firstOrNull;
+    faturas.retainWhere(
+      (f) => f['id_contrato']?.toString() == contratoId && f['status'] == 'A',
+    );
+    faturas.sort(
+      (a, b) => a['data_vencimento'].compareTo(b['data_vencimento']),
+    );
 
     return DashboardInfo(
       contrato: contrato,
@@ -112,58 +95,185 @@ class _DashboardPageState extends State<DashboardPage> {
       rad: rad,
       downloadGB: consumo['download'] ?? 0,
       uploadGB: consumo['upload'] ?? 0,
-      faturaAtual: faturaAtual,
+      faturaAtual: faturas.firstOrNull,
       tvCount: tvPerfis.length,
     );
   }
 
-  /* ---------------------- helper chip ---------------------- */
+  /* --------------- helpers --------------- */
   Widget _tag({
     required IconData icon,
     required String label,
     required Color bg,
     required Color fg,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: fg),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              label,
-              style: TextStyle(fontSize: 11, color: fg),
-              overflow: TextOverflow.ellipsis,
-            ),
+  }) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: fg),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 11, color: fg),
+            overflow: TextOverflow.ellipsis,
           ),
-        ],
-      ),
+        ),
+      ],
+    ),
+  );
+
+  /* --------------- speed-test --------------- */
+  Future<void> _showSpeedTestModal(BuildContext context) async {
+    // pré-aviso
+    final ok = await showDialog<bool>(
+      context: context,
+      builder:
+          (dlgCtx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Text('Instruções para Teste'),
+            content: const Text(
+              'Para resultados precisos:\n'
+              '• Use Wi-Fi 5 GHz se possível\n'
+              '• Fique próximo ao roteador\n\n'
+              'Iniciar agora?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dlgCtx, false),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(dlgCtx, true),
+                child: const Text('Iniciar'),
+              ),
+            ],
+          ),
+    );
+    if (ok != true) return;
+
+    double? dl, ul;
+    Timer? watchdog; // encerra se travar
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (sbCtx) => StatefulBuilder(
+            builder: (sbCtx2, setState) {
+              // dispara 1×
+              if (dl == null) {
+                watchdog = Timer(const Duration(seconds: 15), () {
+                  if (Navigator.of(sbCtx2).canPop()) Navigator.pop(sbCtx2);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text(
+                        'Não foi possível completar o teste de velocidade.\n'
+                        'Verifique sua conexão e tente novamente.',
+                      ),
+                      backgroundColor: Colors.red.shade600,
+                    ),
+                  );
+                });
+
+                _speedTest
+                    .testarVelocidadeAPI()
+                    .then((res) {
+                      watchdog?.cancel();
+                      setState(() {
+                        dl = res['download'];
+                        ul = res['upload'];
+                      });
+                    })
+                    .catchError((_) {
+                      watchdog?.cancel();
+                      Navigator.pop(sbCtx2);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text(
+                            'Não foi possível completar o teste de velocidade.\n'
+                            'Verifique sua conexão e tente novamente.',
+                          ),
+                          backgroundColor: Colors.red.shade600,
+                        ),
+                      );
+                    });
+              }
+
+              // progresso
+              if (dl == null) {
+                return AlertDialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  title: const Text('Teste de Velocidade'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      SizedBox(height: 16),
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('Medindo download e upload...'),
+                    ],
+                  ),
+                );
+              }
+
+              // resultado
+              return AlertDialog(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                title: const Text('Resultado'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _MiniRow(
+                      icon: Icons.download,
+                      label: 'DOWNLOAD',
+                      value: '${dl!.toStringAsFixed(1)} Mbps',
+                      color: Colors.green,
+                    ),
+                    const SizedBox(height: 12),
+                    _MiniRow(
+                      icon: Icons.upload,
+                      label: 'UPLOAD',
+                      value: '${ul!.toStringAsFixed(1)} Mbps',
+                      color: Colors.blue,
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(sbCtx2),
+                    child: const Text('Fechar'),
+                  ),
+                ],
+              );
+            },
+          ),
     );
   }
 
-  /* ----------------- seletor de contrato ------------------- */
+  /* --------------- seletor de contrato --------------- */
   Future<void> _showContratoSelector() async {
     final clientId = _user['id'].toString();
-
-    // 1) CONTRATOS ATIVOS
     final todos = await listarContratosDoCliente(clientId);
     final ativos = todos.where((c) => c['status'] == 'A').toList();
     if (ativos.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Nenhum contrato ativo encontrado.')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nenhum contrato ativo encontrado.')),
+      );
       return;
     }
 
-    // 2) Qtd de faturas em aberto por contrato
     final faturas = await listarFaturasDoCliente(clientId);
     final Map<String, int> emAberto = {};
     for (final f in faturas) {
@@ -172,27 +282,23 @@ class _DashboardPageState extends State<DashboardPage> {
       if (id != null) emAberto[id] = (emAberto[id] ?? 0) + 1;
     }
 
-    // 3) Endereço fallback = endereço do cliente
     String _endCliente() {
       final p = _user;
       return [
         p['endereco'] ?? '',
-        if ((p['numero'] ?? '').toString().isNotEmpty) 'Nº ${p['numero']}',
-        if ((p['bairro'] ?? '').toString().isNotEmpty) p['bairro'],
-        if ((p['cidade'] ?? '').toString().isNotEmpty &&
-            p['cidade'].toString() != '0')
-          p['cidade'],
+        if ('${p['numero']}'.isNotEmpty) 'Nº ${p['numero']}',
+        if ('${p['bairro']}'.isNotEmpty) p['bairro'],
+        if ('${p['cidade']}'.isNotEmpty && '${p['cidade']}' != '0') p['cidade'],
       ].where((e) => e.toString().trim().isNotEmpty).join(' - ');
     }
 
-    /* ---------- Bottom-sheet ---------- */
     final escolhido = await showModalBottomSheet<String>(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder:
-          (_) => SafeArea(
+          (sheetCtx) => SafeArea(
             child: ListView.builder(
               padding: const EdgeInsets.all(12),
               itemCount: ativos.length,
@@ -203,12 +309,10 @@ class _DashboardPageState extends State<DashboardPage> {
 
                 final endAux = [
                       c['endereco'],
-                      if ((c['numero'] ?? '').toString().isNotEmpty)
-                        'Nº ${c['numero']}',
+                      if ('${c['numero']}'.isNotEmpty) 'Nº ${c['numero']}',
                       c['bairro'],
-                      (c['cidade'] != null && c['cidade'].toString() != '0')
-                          ? c['cidade']
-                          : '',
+                      if (c['cidade'] != null && '${c['cidade']}' != '0')
+                        c['cidade'],
                     ]
                     .where((e) => e != null && e.toString().trim().isNotEmpty)
                     .join(' - ');
@@ -225,12 +329,11 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(16),
-                    onTap: () => Navigator.pop(context, id),
+                    onTap: () => Navigator.pop(sheetCtx, id),
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Row(
                         children: [
-                          /* --------- Tags --------- */
                           Expanded(
                             child: Wrap(
                               spacing: 8,
@@ -259,7 +362,6 @@ class _DashboardPageState extends State<DashboardPage> {
                               ],
                             ),
                           ),
-                          /* ---- badges / status ---- */
                           Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -295,19 +397,17 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
     );
 
-    // 4) salva & recarrega se mudou
     if (escolhido != null && escolhido != _selectedId) {
       await _Prefs.set(escolhido);
       _loadAll();
     }
   }
 
-  /* ------------------------- UI ------------------------- */
+  /* --------------- build --------------- */
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final nome = _user['fantasia'] ?? '';
-    final cpf = _user['cnpj_cpf'] ?? '';
 
     return FutureBuilder<DashboardInfo>(
       future: _future,
@@ -324,16 +424,12 @@ class _DashboardPageState extends State<DashboardPage> {
         final online = rad['online'] == 'S';
         final ativo = rad['ativo'] == 'S';
 
-        /* ---- blocos ---- */
         final tiles = <_DashTile>[
           _DashTile(
             icon: online ? Icons.wifi : Icons.wifi_off,
             title: 'Conexão',
             value: ativo ? (online ? 'Online' : 'Offline') : 'Inativa',
-            color:
-                ativo
-                    ? (online ? Colors.green : Colors.orange)
-                    : Colors.redAccent,
+            color: ativo ? (online ? Colors.green : Colors.orange) : Colors.red,
             onTap: () => widget.onNavigateTab(1),
           ),
           _DashTile(
@@ -362,50 +458,40 @@ class _DashboardPageState extends State<DashboardPage> {
           _DashTile(
             icon: Icons.speed,
             title: 'Velocidade',
-            value: info.contrato['descricao_aux_plano_venda'] ?? '—',
+            onTap: () => _showSpeedTestModal(context),
           ),
           _DashTile(
             icon: Icons.support_agent,
             title: 'Suporte',
-            value: 'Acesse seus chamados',
+            value: 'Chamados',
             onTap: () => widget.onNavigateTab(4),
           ),
         ];
 
         return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              /* ---------- cabeçalho ---------- */
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+              // cabeçalho
+              Column(
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Olá, ${nome.toUpperCase()}!',
-                          style: theme.textTheme.headlineSmall!.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text('CPF: $cpf', style: theme.textTheme.bodyMedium),
-                      ],
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Olá, ${nome.toUpperCase()}!',
+                      style: theme.textTheme.headlineSmall!.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 2,
+                      textAlign: TextAlign.center,
                     ),
                   ),
-
+                  const SizedBox(height: 12),
                   if (info.contratos.where((c) => c['status'] == 'A').length >
                       1)
                     TextButton.icon(
                       onPressed: _showContratoSelector,
-                      icon: const Icon(
-                        Icons.swap_horiz,
-                        size: 18,
-                        color: Colors.white,
-                      ),
+                      icon: const Icon(Icons.swap_horiz, color: Colors.white),
                       label: const Text(
                         'Escolher contrato',
                         style: TextStyle(color: Colors.white, fontSize: 12),
@@ -419,24 +505,25 @@ class _DashboardPageState extends State<DashboardPage> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        minimumSize: const Size(0, 0),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                     ),
                 ],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
-              /* ------------- grid ------------- */
+              // grid
               Expanded(
                 child: GridView.builder(
                   physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.only(
+                    bottom: kBottomNavigationBarHeight + 16,
+                  ),
                   itemCount: tiles.length,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    childAspectRatio: 1.05,
-                    crossAxisSpacing: 20,
-                    mainAxisSpacing: 20,
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 175,
+                    mainAxisSpacing: 16,
+                    crossAxisSpacing: 16,
+                    childAspectRatio: 1.0,
                   ),
                   itemBuilder: (_, i) => tiles[i].build(context),
                 ),
@@ -449,32 +536,51 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 }
 
-/* ============================================================= */
-/*               MODELO DE DADOS LOCAL (Dashboard)               */
-/* ============================================================= */
-class DashboardInfo {
-  final Map<String, dynamic> contrato;
-  final List<Map<String, dynamic>> contratos;
-  final Map<String, dynamic> rad;
-  final double downloadGB;
-  final double uploadGB;
-  final Map<String, dynamic>? faturaAtual;
-  final int tvCount;
+/* ---------- widgets auxiliares ---------- */
 
-  DashboardInfo({
-    required this.contrato,
-    required this.contratos,
-    required this.rad,
-    required this.downloadGB,
-    required this.uploadGB,
-    required this.faturaAtual,
-    required this.tvCount,
+class _MiniRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+  const _MiniRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
   });
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Icon(icon, color: color, size: 20),
+      const SizedBox(width: 8),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: color,
+              fontSize: 14,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: color.withOpacity(.7),
+              height: 1.2,
+            ),
+          ),
+        ],
+      ),
+    ],
+  );
 }
 
-/* ============================================================= */
-/*                    CARD REUTILIZÁVEL                           */
-/* ============================================================= */
+/// tile
 class _DashTile {
   final IconData icon;
   final String title;
@@ -482,7 +588,6 @@ class _DashTile {
   final Widget? embed;
   final VoidCallback? onTap;
   final Color? color;
-
   _DashTile({
     required this.icon,
     required this.title,
@@ -496,34 +601,38 @@ class _DashTile {
     final theme = Theme.of(context);
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(12),
       child: Ink(
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceVariant,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(.06),
-              blurRadius: 10,
-              offset: const Offset(0, 6),
+              color: Colors.black.withOpacity(.04),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
             ),
           ],
         ),
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Icon(icon, size: 30, color: color ?? theme.colorScheme.primary),
-            embed ??
-                Text(
-                  value ?? '',
-                  style: theme.textTheme.titleLarge!.copyWith(
-                    color: color ?? theme.colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
+            Icon(icon, size: 24, color: color ?? theme.colorScheme.primary),
+            const SizedBox(height: 8),
+            if (embed != null)
+              Expanded(child: embed!)
+            else if (value != null)
+              Text(
+                value!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleMedium!.copyWith(
+                  color: color ?? theme.colorScheme.primary,
                 ),
-            Text(title, style: theme.textTheme.titleMedium),
+              ),
+            const Spacer(),
+            Text(title, style: theme.textTheme.bodySmall),
           ],
         ),
       ),
@@ -531,9 +640,27 @@ class _DashTile {
   }
 }
 
-/* ============================================================= */
-/*           pequena extensão para evitar IndexError             */
-/* ============================================================= */
+/* ---------- modelo ---------- */
+class DashboardInfo {
+  final Map<String, dynamic> contrato;
+  final List<Map<String, dynamic>> contratos;
+  final Map<String, dynamic> rad;
+  final double downloadGB;
+  final double uploadGB;
+  final Map<String, dynamic>? faturaAtual;
+  final int tvCount;
+  DashboardInfo({
+    required this.contrato,
+    required this.contratos,
+    required this.rad,
+    required this.downloadGB,
+    required this.uploadGB,
+    required this.faturaAtual,
+    required this.tvCount,
+  });
+}
+
+/* ---------- extensão ---------- */
 extension FirstOrNull<E> on List<E> {
   E? get firstOrNull => isEmpty ? null : first;
 }
