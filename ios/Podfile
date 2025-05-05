@@ -1,19 +1,20 @@
+# ios/Podfile  ── totalmente compatível com Flutter estável ≥ 3.13
+
 platform :ios, '13.0'
 
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
-install! 'cocoapods',
-  :deterministic_uuids => false
+# Garante reprodutibilidade dos UUIDs gerados nos Pods
+install! 'cocoapods', deterministic_uuids: false
 
-project 'Runner', {
-  'Debug' => :debug,
-  'Profile' => :release,
-  'Release' => :release,
-}
+# Carrega o helper do Flutter
+flutter_root = File.expand_path(File.join(__dir__, '..', 'flutter'))
+load File.join(flutter_root, 'packages', 'flutter_tools', 'bin', 'podhelper.rb')
 
 target 'Runner' do
   use_frameworks!
   use_modular_headers!
 
-  flutter_install_all_ios_pods()
+  # ✅ nova função — substitui o obsoleto flutter_install_all_ios_pods
+  flutter_install_ios_plugin_pods
 end

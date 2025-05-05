@@ -2,32 +2,18 @@ workflows:
   build_ios_only:
     name: Build iOS Sempre Online
     environment:
-      flutter: stable
+      flutter: stable        # versão estável mais recente
       xcode: latest
       cocoapods: default
-      vars:
-        BUILD_NUMBER: 1
     scripts:
-      - name: Instalando dependências Flutter
-        script: |
-          flutter pub get
+      - name: Pub get
+        script: flutter pub get
 
-      - name: Corrigir Podfile para evitar erro do flutter_install_all_ios_pods
-        script: |
-          sed -i '' 's/flutter_install_all_ios_pods .*/flutter_install_all_ios_pods()/g' ios/Podfile
-
-      - name: Instalar e limpar Pods
-        script: |
-          cd ios
-          rm -rf Pods Podfile.lock
-          pod install
-          cd ..
-
-      - name: Build iOS release
-        script: |
-          flutter build ios --release --no-codesign
+      - name: Build iOS release (sem assinatura)
+        script: flutter build ios --release --no-codesign
 
     artifacts:
+      # Resultado do build — útil para subir no Xcode Organizer ou empacotar .ipa depois
       - build/ios/iphoneos/Runner.app
 
     publishing:
