@@ -9,14 +9,14 @@ workflows:
         BUILD_NUMBER: 1
     scripts:
       - name: Instalando dependências
-        script: flutter pub get
-
-      - name: Build iOS release
+        script: |
+          flutter pub get
+          cd ios
+          pod install
+      - name: Build iOS release (sem assinatura)
         script: flutter build ios --release --no-codesign
-
     artifacts:
       - build/ios/iphoneos/Runner.app
-
     publishing:
       email:
         recipients:
