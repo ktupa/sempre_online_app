@@ -45,5 +45,22 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+
+	<!-- 🔔 Notificações em segundo plano (FCM) -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+
+	<!-- 🔥 Firebase SDK sem AppDelegate manual -->
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<true/>
+
+	<!-- 🌐 Permitir requisições HTTP (útil para API IXC local/dev) -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 </dict>
 </plist>
